@@ -95,12 +95,12 @@ module.exports = (robot) ->
           robot.logger.info msgData.msg
         when "line"
           if streaming
-            robot.messageRoom 'shell', "#{msgData.disp_time}. Type: #{msgData.log_type}. Server: #{msgData.server}. Text: #{msgData.text}"
+            robot.messageRoom config.room, "#{msgData.disp_time}. Type: #{msgData.log_type}. Server: #{msgData.server}. Text: #{msgData.text}"
           robot.emit "acquiaLogMessageLine", msgData.text, msgData.log_type, msgData.server, msgData.disp_time
         when "enabled"
           robot.logger.info msgData
           if msgData.enabled.length
-            robot.messageRoom 'shell', "Server #{msgData.server} has #{msgData.enabled.join ', '} logs streaming enabled"
+            robot.messageRoom config.room, "Server #{msgData.server} has #{msgData.enabled.join ', '} logs streaming enabled"
 
     ws.on 'close', (code, msg)->
       robot.logger.debug code
