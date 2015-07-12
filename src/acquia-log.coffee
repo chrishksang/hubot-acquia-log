@@ -41,11 +41,12 @@ module.exports = (robot) ->
     site: process.env.HUBOT_ACQUIA_LOG_SITE
     env: process.env.HUBOT_ACQUIA_LOG_SITE_ENV
     room: process.env.HUBOT_ACQUIA_LOG_ROOM
+    enabled: process.env.HUBOT_ACQUIA_LOG_ENABLED
 
   # Local object to store data on available servers and logs.
   available = []
 
-  # Types to enable.
+  # Types which can be enabled.
   enabled = [
     "apache-request"
     "drupal-request"
@@ -66,7 +67,6 @@ module.exports = (robot) ->
     .header('Authorization', "Basic #{token}")
     .get() (err, res, body)->
       data = JSON.parse body
-      console.log data
       deferred.resolve data
 
     return deferred.promise
@@ -92,7 +92,7 @@ module.exports = (robot) ->
         when "available"
           available.push msgData
         when "success"
-          robot.logger.info msgData.msg
+          robot.logger.debug msgData.msg
         when "line"
           if streaming
             robot.messageRoom config.room, "#{msgData.disp_time}. Type: #{msgData.log_type}. Server: #{msgData.server}. Text: #{msgData.text}"
