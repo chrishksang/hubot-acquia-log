@@ -2,6 +2,7 @@
 #   Integration with Acquia's Logstream API.
 #   It will connect to the logstream once the bot starts then there
 #   are more commands to control streaming of logs.
+#   @todo: refactor into some kind of saner class based thing
 #
 # Dependencies:
 #   ws
@@ -15,6 +16,9 @@
 #   HUBOT_ACQUIA_LOG_ROOM: chat room to message into
 #
 # Commands:
+#   hubot acquia log connect - connect to logstream
+#   hubot acquia log disconnect - disconnect from logstream
+#   hubot acquia log status - hubot's connection to acquia status
 #   hubot acquia log enable <type> - enable streaming logs of <type>
 #   hubot acquia log list types - list log types which can be streamed
 #   hubot acquia log list-enabled - show which logs are being streamed
@@ -32,6 +36,7 @@ Q = require 'q'
 
 module.exports = (robot) ->
 
+  # Object to hold websocket connection object.
   ws = {}
 
   # Config variables.
@@ -57,7 +62,8 @@ module.exports = (robot) ->
   # Whether we are streaming messages or not.
   streaming = false
 
-  connect = ()->
+  # Initiate connection to logstream.
+  init = ()->
     url = "https://cloudapi.acquia.com/v1/sites/#{config.site}/envs/#{config.env}/logstream.json"
     deferred = Q.defer()
     token = new Buffer("#{config.user}:#{config.token}").toString('base64')
@@ -66,13 +72,16 @@ module.exports = (robot) ->
     robot.http(url)
     .header('Authorization', "Basic #{token}")
     .get() (err, res, body)->
-      data = JSON.parse body
-      deferred.resolve data
+      if res.code is 200
+        data = JSON.parse body
+        deferred.resolve data
+      else
+        deferred.reject err
 
     return deferred.promise
 
-  connect().then((data)->
-    ws = new WebSocket data.url
+  # Once we have a websocket, bind the events.
+  bind = (ws)->
     ws.on 'error', (error)->
       robot.logger.error "error: #{error}"
 
@@ -84,11 +93,9 @@ module.exports = (robot) ->
 
     ws.on 'message', (msg, flags)->
       robot.logger.debug "onmessage msg: #{msg}"
-
       msgData = JSON.parse msg
-
       switch msgData.cmd
-      # Acquia will tell us what logs we can use.
+        # Acquia will tell us what logs we can use.
         when "available"
           available.push msgData
         when "success"
@@ -105,7 +112,17 @@ module.exports = (robot) ->
     ws.on 'close', (code, msg)->
       robot.logger.debug code
       robot.logger.debug msg
-  )
+
+  # Connect and bind all the events.
+  connect = ()->
+    return init().then((data)->
+      ws = new WebSocket data.url
+      bind()
+      return true
+    ,(error)->
+      robot.logger.error error
+      return error
+    )
 
   # Enable or disable logs.
   robot.respond /acquia log (disable|enable) (.*)/i, (msg)->
@@ -113,18 +130,21 @@ module.exports = (robot) ->
     logType = msg.match[2].trim()
 
     if logType not in enabled
-      msg.send "I can't #{command} logs of type #{logType}"
-      return
-
-    for server in available
-      if server.type is logType
-        ws.send JSON.stringify {"cmd": "#{command}", "type": "#{logType}", "server": "#{server.server}"}
-
-    msg.send "OK. I've #{command}d streaming logs of #{logType}."
+      return msg.send "I can't #{command} logs of type #{logType}"
+    try
+      for server in available
+        if server.type is logType
+          ws.send JSON.stringify {"cmd": "#{command}", "type": "#{logType}", "server": "#{server.server}"}
+      msg.send "OK. I've #{command}d streaming logs of #{logType}."
+    catch error
+      msg.send "I couldn't do that, because of this error: #{error}."
 
   robot.respond /acquia log list-enabled/i, (msg)->
-    ws.send JSON.stringify {"cmd": "list-enabled"}
-    msg.send "OK. I am listing the enabled logs."
+    try
+      ws.send JSON.stringify {"cmd": "list-enabled"}
+      msg.send "OK. I am listing the enabled logs."
+    catch error
+      msg.send "I couldn't do that, because of this error: #{error}."
 
   robot.respond /acquia log (start|stop)/i, (msg)->
     verb = msg.match[1]
@@ -133,3 +153,15 @@ module.exports = (robot) ->
 
   robot.respond /acquia log list types/i, (msg)->
     msg.reply "I can stream logs of these types: #{enabled.join ', '}"
+
+  robot.respond /acquia log connect/i, (msg)->
+    msg.reply "OK. I've connected!"
+
+  robot.respond /acquia log disconnect/i, (msg)->
+    msg.reply "OK. I've disconnected!"
+
+  robot.respond /acquia log status/i, (msg)->
+    msg.reply "My logstream status is: this"
+
+  # Initiate everything on load.
+  connect()
