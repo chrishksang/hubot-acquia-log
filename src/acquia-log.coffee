@@ -18,7 +18,6 @@
 # Commands:
 #   hubot acquia log connect - connect to logstream
 #   hubot acquia log disconnect - disconnect from logstream
-#   hubot acquia log status - hubot's connection to acquia status
 #   hubot acquia log enable <type> - enable streaming logs of <type>
 #   hubot acquia log list types - list log types which can be streamed
 #   hubot acquia log list-enabled - show which logs are being streamed
@@ -54,9 +53,11 @@ module.exports = (robot) ->
   # Types which can be enabled.
   enabled = [
     "apache-request"
+    "bal-request"
     "drupal-request"
     "drupal-watchdog"
     "php-error"
+    "varnish-request"
   ]
 
   # Whether we are streaming messages or not.
@@ -155,13 +156,18 @@ module.exports = (robot) ->
     msg.reply "I can stream logs of these types: #{enabled.join ', '}"
 
   robot.respond /acquia log connect/i, (msg)->
-    msg.reply "OK. I've connected!"
+    connect().then(()->
+      msg.send "OK. I've connected!"
+    ,(error)->
+      msg.send "I can't seem to connect to logstream right now. The error was: #{error}"
+    )
 
   robot.respond /acquia log disconnect/i, (msg)->
-    msg.reply "OK. I've disconnected!"
-
-  robot.respond /acquia log status/i, (msg)->
-    msg.reply "My logstream status is: this"
+    try
+      ws.close()
+      msg.reply "OK. I've disconnected!"
+    catch error
+      msg.send "Disconnect returned an error: #{error}"
 
   # Initiate everything on load.
   connect()
